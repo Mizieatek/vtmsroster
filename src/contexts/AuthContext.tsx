@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { User } from '../types';
-import toast from 'react-hot-toast';
+// toast removed
 
 interface AuthContextType {
   user: User | null;
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (userError || !userData) {
-        toast.error('Username tidak dijumpai atau tidak aktif');
+        console.error('Username tidak dijumpai atau tidak aktif');
         return false;
       }
 
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // In production, you should use proper password hashing
       const expectedPassword = `${username}123`;
       if (password !== expectedPassword) {
-        toast.error('Password tidak sah');
+        console.error('Password tidak sah');
         return false;
       }
 
@@ -112,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         if (signUpError) {
-          toast.error('Ralat semasa log masuk');
+          console.error('Ralat semasa log masuk');
           return false;
         }
 
@@ -127,11 +127,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(userData);
       }
 
-      toast.success('Berjaya log masuk!');
+      console.log('Berjaya log masuk!');
       return true;
     } catch (error) {
       console.error('Login error:', error);
-      toast.error('Ralat semasa log masuk');
+      console.error('Ralat semasa log masuk');
       return false;
     }
   };
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    toast.success('Berjaya log keluar');
+    console.log('Berjaya log keluar');
   };
 
   const updatePassword = async (newPassword: string): Promise<boolean> => {
@@ -149,15 +149,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        toast.error('Ralat semasa kemaskini password');
+        console.error('Ralat semasa kemaskini password');
         return false;
       }
 
-      toast.success('Password berjaya dikemaskini!');
+      console.log('Password berjaya dikemaskini!');
       return true;
     } catch (error) {
       console.error('Password update error:', error);
-      toast.error('Ralat semasa kemaskini password');
+      console.error('Ralat semasa kemaskini password');
       return false;
     }
   };

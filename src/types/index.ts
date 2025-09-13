@@ -25,4 +25,3 @@ export const SHIFT_INFO: Record<ShiftCode, { label: string; color: string; textC
   MT:  { label: 'Meeting',      color: '#fae8ff', textColor: '#86198f' },
   MC:  { label: 'Medical',      color: '#fee2e2', textColor: '#7f1d1d' },
 };
-export const DEFAULT_PATTERN: ShiftCode[] = ['N','N','N','O','O','E','E','E','O','O','M','M','M','O','O'];

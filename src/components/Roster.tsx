@@ -1,335 +1,173 @@
 import React, { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths } from 'date-fns';
-import { 
-  ChevronLeftIcon, 
-  ChevronRightIcon,
-  PrinterIcon,
-  AdjustmentsHorizontalIcon,
-  CalendarIcon
-} from '@heroicons/react/24/outline';
-import { SHIFT_INFO, DEFAULT_PATTERN, type ShiftCode } from '../types';
-import { useAuth } from '../contexts/AuthContext';
+import { ChevronLeftIcon, ChevronRightIcon, PrinterIcon } from '@heroicons/react/24/outline';
+import { SHIFT_INFO, type ShiftCode } from '../types';
 import { supabase } from '../lib/supabase';
-import toast from 'react-hot-toast';
+import { useAuth } from '../contexts/AuthContext';
 
-interface StaffMember {
-  id: string;
-  username: string;
-  full_name: string;
-  grade: string;
-}
-
-interface Event {
-  id: string;
-  title: string;
-  date: string;
-  type: string;
-}
+type Staff = { id: string; username: string; full_name: string; grade: string; };
+type Event = { id: string; title: string; date: string; type: string; };
 
 export default function Roster() {
   const { user } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [showFullNames, setShowFullNames] = useState(false);
-  const [rosterData, setRosterData] = useState<Record<string, Record<string, ShiftCode>>>({});
-  const [staffData, setStaffData] = useState<StaffMember[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [roster, setRoster] = useState<Record<string, Record<string, ShiftCode>>>({});
+  const [showFullNames, setShowFullNames] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [currentMonth]);
+  useEffect(() => { void loadData(); }, [currentMonth]);
 
-  const loadData = async () => {
-    setLoading(true);
+  async function loadData() {
+    setLoading(true); setError(null);
     try {
-      // Load staff data
-      const { data: staff, error: staffError } = await supabase
+      // Load staff (active)
+      const { data: staffData, error: staffErr } = await supabase
         .from('users')
         .select('id, username, full_name, grade')
         .eq('is_active', true)
         .order('username');
+      if (staffErr) throw staffErr;
+      setStaff(staffData || []);
 
-      if (staffError) throw staffError;
-      setStaffData(staff || []);
+      const mStart = startOfMonth(currentMonth);
+      const mEnd = endOfMonth(currentMonth);
 
-      // Load shifts for current month
-      const monthStart = startOfMonth(currentMonth);
-      const monthEnd = endOfMonth(currentMonth);
-      
-      const { data: shifts, error: shiftsError } = await supabase
+      // Load shifts in month, with explicit FK join
+      const { data: shifts, error: shiftsErr } = await supabase
         .from('shifts')
         .select('user_id, date, shift_code')
-        .gte('date', format(monthStart, 'yyyy-MM-dd'))
-        .lte('date', format(monthEnd, 'yyyy-MM-dd'));
+        .gte('date', format(mStart, 'yyyy-MM-dd'))
+        .lte('date', format(mEnd, 'yyyy-MM-dd'));
+      if (shiftsErr) throw shiftsErr;
 
-      if (shiftsError) throw shiftsError;
-
-      // Convert shifts to roster data format
-      const rosterMap: Record<string, Record<string, ShiftCode>> = {};
-      staff?.forEach(staffMember => {
-        rosterMap[staffMember.id] = {};
+      const map: Record<string, Record<string, ShiftCode>> = {};
+      (staffData || []).forEach(s => { map[s.id] = {}; });
+      (shifts || []).forEach((row: any) => {
+        if (!map[row.user_id]) map[row.user_id] = {};
+        map[row.user_id][row.date] = row.shift_code as ShiftCode;
       });
+      setRoster(map);
 
-      shifts?.forEach(shift => {
-        if (!rosterMap[shift.user_id]) {
-          rosterMap[shift.user_id] = {};
-        }
-        rosterMap[shift.user_id][shift.date] = shift.shift_code as ShiftCode;
-      });
-
-      setRosterData(rosterMap);
-
-      // Load events for current month
-      const { data: eventsData, error: eventsError } = await supabase
+      // Load events
+      const { data: eventsData, error: evErr } = await supabase
         .from('events')
         .select('id, title, date, type')
-        .gte('date', format(monthStart, 'yyyy-MM-dd'))
-        .lte('date', format(monthEnd, 'yyyy-MM-dd'));
-
-      if (eventsError) throw eventsError;
+        .gte('date', format(mStart, 'yyyy-MM-dd'))
+        .lte('date', format(mEnd, 'yyyy-MM-dd'));
+      if (evErr) throw evErr;
       setEvents(eventsData || []);
-
-    } catch (error) {
-      console.error('Error loading data:', error);
-      toast.error('Ralat semasa memuatkan data');
+    } catch (e: any) {
+      console.error('Roster load error:', e);
+      setError(e.message || 'Gagal memuatkan data');
     } finally {
       setLoading(false);
     }
-  };
-
-  const generateRosterData = () => {
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(currentMonth);
-    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-    
-    const data: Record<string, Record<string, ShiftCode>> = {};
-    
-    staffData.forEach((staff, staffIndex) => {
-      data[staff.id] = {};
-      days.forEach((day, dayIndex) => {
-        const patternIndex = (staffIndex * 3 + dayIndex) % DEFAULT_PATTERN.length;
-        data[staff.id][format(day, 'yyyy-MM-dd')] = DEFAULT_PATTERN[patternIndex];
-      });
-    });
-    
-    setRosterData(data);
-  };
-
-  const getDaysInMonth = () => {
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(currentMonth);
-    return eachDayOfInterval({ start: monthStart, end: monthEnd });
-  };
-
-  const previousMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1));
-  };
-
-  const nextMonth = () => {
-    setCurrentMonth(addMonths(currentMonth, 1));
-  };
-
-  const printRoster = () => {
-    window.print();
-  };
-
-  const getEventsForDate = (date: string) => {
-    return events.filter(event => event.date === date);
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
   }
+
+  const days = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
+  const monthLabel = format(currentMonth, 'MMMM yyyy');
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg border border-white/20 p-6">
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-          <h4 className="font-medium text-green-800 mb-2">✅ Status Database</h4>
-          <p className="text-sm text-green-700">
-            Sistem telah disambungkan dengan Supabase. Semua data disimpan secara real-time.
-          </p>
-        </div>
-        
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Roster Syif</h1>
-            <p className="text-gray-600 mt-1">Jadual kerja kakitangan department</p>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setShowFullNames(false)}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition duration-200 ${
-                  !showFullNames ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Nama Pendek
-              </button>
-              <button
-                onClick={() => setShowFullNames(true)}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition duration-200 ${
-                  showFullNames ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Nama Panjang
-              </button>
-            </div>
-            
-            <button
-              onClick={printRoster}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200"
-            >
-              <PrinterIcon className="h-4 w-4" />
-              <span>Cetak</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Month Navigation */}
-      <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg border border-white/20 p-6">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={previousMonth}
-            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition duration-200"
-          >
-            <ChevronLeftIcon className="h-4 w-4" />
-            <span>Bulan Sebelum</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-lg hover:bg-gray-100">
+            <ChevronLeftIcon className="h-5 w-5 text-gray-700" />
           </button>
-          
-          <div className="flex items-center space-x-3">
-            <CalendarIcon className="h-5 w-5 text-gray-500" />
-            <h2 className="text-xl font-bold text-gray-900">
-              {format(currentMonth, 'MMMM yyyy')}
-            </h2>
-          </div>
-          
-          <button
-            onClick={nextMonth}
-            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition duration-200"
-          >
-            <span>Bulan Seterusnya</span>
-            <ChevronRightIcon className="h-4 w-4" />
+          <h1 className="text-2xl font-bold text-gray-900">{monthLabel}</h1>
+          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-lg hover:bg-gray-100">
+            <ChevronRightIcon className="h-5 w-5 text-gray-700" />
+          </button>
+        </div>
+        <div className="flex items-center space-x-2">
+          <label className="text-sm text-gray-600">
+            <input type="checkbox" className="mr-2" checked={showFullNames} onChange={() => setShowFullNames(!showFullNames)} />
+            Tunjuk nama penuh
+          </label>
+          <button onClick={() => window.print()} className="inline-flex items-center px-3 py-2 rounded-lg bg-white border hover:bg-gray-50 text-sm">
+            <PrinterIcon className="h-4 w-4 mr-2" /> Print
           </button>
         </div>
       </div>
 
-      {/* Roster Table */}
-      <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg border border-white/20 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50/80">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900 sticky left-0 bg-gray-50/80 min-w-[200px]">
-                  Kakitangan
-                </th>
-                {getDaysInMonth().map((day) => (
-                  <th
-                    key={format(day, 'yyyy-MM-dd')}
-                    className="px-2 py-3 text-center text-xs font-medium text-gray-900 min-w-[50px]"
-                  >
-                    <div>{format(day, 'd')}</div>
-                    <div className="text-[10px] text-gray-500">
-                      {format(day, 'EEE')}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {staffData.map((staff) => (
-                <tr key={staff.id} className="hover:bg-gray-50/50 transition duration-200">
-                  <td className="px-4 py-3 sticky left-0 bg-white/80 backdrop-blur-sm border-r border-gray-200">
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        {showFullNames ? staff.full_name : staff.username}
-                      </div>
-                      <div className="text-sm text-gray-500">{staff.grade}</div>
-                    </div>
-                  </td>
-                  {getDaysInMonth().map((day) => {
-                    const dateStr = format(day, 'yyyy-MM-dd');
-                    const shift = rosterData[staff.id]?.[dateStr];
-                    const shiftInfo = shift ? SHIFT_INFO[shift] : null;
-                    const events = getEventsForDate(dateStr);
-                    
-                    return (
-                      <td key={dateStr} className="px-2 py-3 text-center relative">
-                        {shift && (
-                          <div
-                            className="w-full h-8 rounded-md flex items-center justify-center text-xs font-bold cursor-pointer hover:scale-105 transition duration-200"
-                            style={{
-                              backgroundColor: shiftInfo?.color,
-                              color: shiftInfo?.textColor
-                            }}
-                            title={`${staff.username}: ${shiftInfo?.label}`}
-                          >
-                            {shift}
-                          </div>
-                        )}
-                        {events.length > 0 && (
-                          <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" 
-                               title={events.map(e => e.title).join(', ')} />
-                        )}
-                      </td>
-                    );
-                  })}
+      {loading && <div className="text-sm text-gray-600">Memuatkan...</div>}
+      {error && <div className="text-sm text-red-600">Ralat: {error}</div>}
+
+      {!loading && !error && (
+        <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow p-4 border">
+          <div className="overflow-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr>
+                  <th className="px-2 py-2 text-left w-48">Staff</th>
+                  {days.map(d => (
+                    <th key={d.toISOString()} className="px-1 py-2 text-center whitespace-nowrap">
+                      <div className="text-[10px] text-gray-500">{format(d, 'EEE')}</div>
+                      <div className="text-sm font-semibold text-gray-800">{format(d, 'd')}</div>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-lg border border-white/20 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Kod Syif & Event</h3>
-        
-        <div className="space-y-6">
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Kod Syif:</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-              {Object.entries(SHIFT_INFO).map(([code, info]) => (
-                <div key={code} className="flex items-center space-x-2">
-                  <div
-                    className="w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold"
-                    style={{ backgroundColor: info.color, color: info.textColor }}
-                  >
-                    {code}
-                  </div>
-                  <span className="text-sm text-gray-700">{info.label}</span>
-                </div>
-              ))}
-            </div>
+              </thead>
+              <tbody className="divide-y">
+                {staff.map(s => (
+                  <tr key={s.id}>
+                    <td className="px-2 py-2 text-gray-900 font-medium whitespace-nowrap">
+                      {showFullNames ? s.full_name : s.username}
+                    </td>
+                    {days.map(d => {
+                      const key = format(d, 'yyyy-MM-dd');
+                      const code = roster[s.id]?.[key];
+                      const info = code ? SHIFT_INFO[code] : null;
+                      return (
+                        <td key={key} className="px-1 py-1 text-center">
+                          <div
+                            className="mx-auto w-10 h-10 rounded-lg flex items-center justify-center text-[10px] font-semibold"
+                            style={{ background: info?.color || '#f3f4f6', color: info?.textColor || '#111827' }}
+                            title={code || ''}
+                          >
+                            {code || ''}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {staff.length === 0 && (
+                  <tr>
+                    <td colSpan={days.length + 1} className="text-center py-10 text-gray-500">
+                      Tiada staff aktif ditemui.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Event Bulan Ini:</h4>
-            <div className="space-y-2">
-              {events.map((event) => (
-                <div key={event.id} className="flex items-center space-x-3 p-2 bg-gray-50 rounded-lg">
-                  <div className="w-2 h-2 bg-red-500 rounded-full" />
-                  <span className="text-sm font-medium">{format(new Date(event.date), 'd MMM')}</span>
-                  <span className="text-sm text-gray-600">{event.title}</span>
-                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full capitalize">
-                    {event.type}
-                  </span>
-                </div>
-              ))}
-              {events.length === 0 && (
-                <p className="text-sm text-gray-500 italic">Tiada event untuk bulan ini</p>
-              )}
-            </div>
+          <div className="mt-6">
+            <h2 className="text-sm font-semibold text-gray-900 mb-2">Events</h2>
+            {events.length === 0 ? (
+              <p className="text-sm text-gray-500">Tiada event untuk bulan ini.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {events.map(ev => (
+                  <li key={ev.id} className="text-gray-700">
+                    {ev.date}: {ev.title} <span className="ml-2 text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded">{ev.type}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
+
+          {staff.length > 0 && Object.values(roster).every(v => Object.keys(v).length === 0) && (
+            <div className="mt-6 p-4 border rounded-lg bg-yellow-50 text-yellow-800 text-sm">
+              Tiada shift untuk bulan ini. Jika anda admin, sila pergi ke <b>Admin → Generate Roster</b> untuk julat tarikh bulan ini.
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
