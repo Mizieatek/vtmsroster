@@ -19,8 +19,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    void loadShifts();
-    async function loadShifts() {
+    (async () => {
       try {
         setLoading(true); setErr(null);
         const start = format(startOfMonth(new Date()), 'yyyy-MM-dd');
@@ -41,7 +40,7 @@ export default function Dashboard() {
       } finally {
         setLoading(false);
       }
-    }
+    })();
   }, [user]);
 
   return (
