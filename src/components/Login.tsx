@@ -14,6 +14,7 @@ export default function Login() {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+
     try {
       await login(username, password);
     } catch (err) {
@@ -28,9 +29,11 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <img src="/vtms.png" alt="VTMS" className="inline-block w-20 h-20 object-contain rounded-2xl mb-4 shadow-lg" />
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">VTMS Roster</h1>
-          <p className="text-gray-600">Please log in to continue</p>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl mb-4 shadow-lg">
+            <LogIn className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Sistem Roster Syif</h1>
+          <p className="text-gray-600">Sila log masuk untuk meneruskan</p>
         </div>
 
         {/* Login Form */}
@@ -41,8 +44,12 @@ export default function Login() {
                 {error}
               </div>
             )}
+
+            {/* Username Field */}
             <div className="space-y-2">
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700">Username</label>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                Username
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-gray-400" />
@@ -53,14 +60,17 @@ export default function Login() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                  placeholder="Enter your username"
+                  placeholder="Masukkan username anda"
                   required
                 />
               </div>
             </div>
 
+            {/* Password Field */}
             <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Lock className="h-5 w-5 text-gray-400" />
@@ -71,7 +81,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full pl-10 pr-12 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/50 backdrop-blur-sm transition-all duration-200"
-                  placeholder="Enter your password"
+                  placeholder="Masukkan password anda"
                   required
                 />
                 <button
@@ -79,11 +89,16 @@ export default function Login() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" /> : <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />}
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                  ) : (
+                    <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                  )}
                 </button>
               </div>
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
@@ -92,13 +107,23 @@ export default function Login() {
               {isLoading ? (
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Signing in...
+                  Sedang log masuk...
                 </div>
-              ) : 'Log Masuk'}
+              ) : (
+                'Log Masuk'
+              )}
             </button>
           </form>
+
+          {/* Forgot Password Link */}
+          <div className="mt-6 text-center">
+            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200">
+              Lupa password?
+            </button>
+          </div>
         </div>
 
+        {/* Demo Credentials */}
         <div className="mt-6 bg-white/50 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
           <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h3>
           <div className="text-xs text-gray-600 space-y-1">

@@ -1,5 +1,4 @@
 export type ShiftCode = 'N' | 'M' | 'E' | 'O' | 'MOT' | 'NOT' | 'AL' | 'CTR' | 'CG' | 'EL' | 'TR' | 'MT' | 'MC';
-
 export interface User {
   id: string;
   username: string;
@@ -11,7 +10,6 @@ export interface User {
   is_active?: boolean;
   created_at?: string;
 }
-
 export const SHIFT_INFO: Record<ShiftCode, { label: string; color: string; textColor: string }> = {
   N:   { label: 'Night',        color: '#1f2937', textColor: '#f3f4f6' },
   M:   { label: 'Morning',      color: '#dbeafe', textColor: '#1e3a8a' },
@@ -27,5 +25,4 @@ export const SHIFT_INFO: Record<ShiftCode, { label: string; color: string; textC
   MT:  { label: 'Meeting',      color: '#fae8ff', textColor: '#86198f' },
   MC:  { label: 'Medical',      color: '#fee2e2', textColor: '#7f1d1d' },
 };
-
 export const DEFAULT_PATTERN: ShiftCode[] = ['N','N','N','O','O','E','E','E','O','O','M','M','M','O','O'];
