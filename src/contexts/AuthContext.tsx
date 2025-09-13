@@ -1,184 +1,144 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { User } from '../types';
-// toast removed
 
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+type AppUser = {
+  id: string;
+  username: string;
+  email?: string | null;
+  full_name: string;
+  grade: string;
+  is_admin: boolean;
+  is_active?: boolean;
+};
+
+type AuthCtx = {
+  user: AppUser | null;
+  sessionLoading: boolean;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updatePassword: (newPassword: string) => Promise<boolean>;
+};
+
+const Ctx = createContext<AuthCtx>({
+  user: null,
+  sessionLoading: true,
+  login: async () => {},
+  logout: async () => {},
+});
+
+export const useAuth = () => useContext(Ctx);
+
+async function fetchAppUserByAuthId(authId: string): Promise<AppUser | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, username, email, full_name, grade, is_admin, is_active')
+    .eq('id', authId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as AppUser | null;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+async function fetchAppUserByUsername(username: string): Promise<AppUser | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, username, email, full_name, grade, is_admin, is_active')
+    .eq('username', username)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as AppUser | null;
+}
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
 
+  // initial load + subscribe to auth state
   useEffect(() => {
-    checkAuthState();
-  }, []);
+    let mounted = true;
 
-  const checkAuthState = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        // Get user profile from database
-        const { data: profile, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        if (error) {
-          console.error('Error fetching user profile:', error);
-          await supabase.auth.signOut();
-        } else {
-          setUser(profile);
-        }
-      }
-    } catch (error) {
-      console.error('Error checking auth state:', error);
-    } finally {
-      setLoading(false);
-    }
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const { data: profile } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          
-          setUser(profile);
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-        }
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  };
-
-  const login = async (username: string, password: string): Promise<boolean> => {
-    try {
-      // First, get user from database to check if exists
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('username', username)
-        .eq('is_active', true)
-        .single();
-
-      if (userError || !userData) {
-        console.error('Username tidak dijumpai atau tidak aktif');
-        return false;
-      }
-
-      // For demo purposes, we'll use a simple password check
-      // In production, you should use proper password hashing
-      const expectedPassword = `${username}123`;
-      if (password !== expectedPassword) {
-        console.error('Password tidak sah');
-        return false;
-      }
-
-      // Create a session using Supabase auth with the user's email
-      const email = userData.email || `${username}@example.com`;
-      
-      // Sign in with email and password
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password
-      });
-
-      if (authError) {
-        // If user doesn't exist in auth, create them
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: email,
-          password: password,
-          options: {
-            data: {
-              username: userData.username,
-              full_name: userData.full_name
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          // Prefer row by auth id
+          const row = await fetchAppUserByAuthId(session.user.id);
+          if (row) setUser(row);
+          else {
+            // Fallback: try username part of email (demo style)
+            const uname = session.user.email?.split('@')[0] ?? '';
+            if (uname) {
+              const row2 = await fetchAppUserByUsername(uname);
+              if (row2) setUser(row2);
             }
           }
-        });
-
-        if (signUpError) {
-          console.error('Ralat semasa log masuk');
-          return false;
         }
-
-        // Update the user record with the auth ID
-        await supabase
-          .from('users')
-          .update({ id: signUpData.user?.id })
-          .eq('username', username);
-
-        setUser({ ...userData, id: signUpData.user?.id || userData.id });
-      } else {
-        setUser(userData);
+      } finally {
+        if (mounted) setSessionLoading(false);
       }
+    })();
 
-      console.log('Berjaya log masuk!');
-      return true;
-    } catch (error) {
-      console.error('Login error:', error);
-      console.error('Ralat semasa log masuk');
-      return false;
+    const { data: sub } = supabase.auth.onAuthStateChange(async (evt, sess) => {
+      if (evt === 'SIGNED_OUT') {
+        setUser(null);
+        return;
+      }
+      if (sess?.user?.id) {
+        try {
+          const row = await fetchAppUserByAuthId(sess.user.id);
+          if (row) setUser(row);
+          else {
+            const uname = sess.user.email?.split('@')[0] ?? '';
+            const row2 = uname ? await fetchAppUserByUsername(uname) : null;
+            if (row2) setUser(row2);
+          }
+        } catch {
+          // swallow
+        }
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  const login = async (username: string, password: string) => {
+    const email = username.includes('@') ? username : `${username}@example.com`;
+    // Sign in
+    const { error: signInErr, data: signInData } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInErr) {
+      // Optional fallback: auto sign-up if not exists and email confirmation is OFF
+      const { error: signUpErr } = await supabase.auth.signUp({ email, password });
+      if (signUpErr) throw signInErr;
+      // After sign-up, try sign-in again
+      const retry = await supabase.auth.signInWithPassword({ email, password });
+      if (retry.error) throw retry.error;
+    }
+
+    // Load app user profile
+    const { data: me } = await supabase.auth.getUser();
+    if (me.user?.id) {
+      const row = await fetchAppUserByAuthId(me.user.id);
+      if (row) {
+        setUser(row);
+        return;
+      }
+      const uname = email.split('@')[0];
+      const row2 = await fetchAppUserByUsername(uname);
+      if (row2) setUser(row2);
     }
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    console.log('Berjaya log keluar');
   };
 
-  const updatePassword = async (newPassword: string): Promise<boolean> => {
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
-      });
+  const value = useMemo(() => ({ user, sessionLoading, login, logout }), [user, sessionLoading]);
 
-      if (error) {
-        console.error('Ralat semasa kemaskini password');
-        return false;
-      }
-
-      console.log('Password berjaya dikemaskini!');
-      return true;
-    } catch (error) {
-      console.error('Password update error:', error);
-      console.error('Ralat semasa kemaskini password');
-      return false;
-    }
-  };
-
-  return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      login,
-      logout,
-      updatePassword,
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
